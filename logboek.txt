@@ -10,4 +10,3 @@ nu wordt dat alleen gedaan in de 9 cellen om zich heen.
 
 Dit zorgt voor een speedup van 3.1x t.o.v. de voor-meting. De gemiddelde simulatie-tijd is: 14.7 seconden.
 
-Na het toepassen van de spatial hash en het opnieuw debug profilen van de functies sprong er een overduidelijke winnaar uit.
