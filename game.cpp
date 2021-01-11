@@ -48,7 +48,7 @@ const static vec2 rocket_size(25, 24);
 const static float tank_radius = 8.5f;
 const static float rocket_radius = 10.f;
 
-
+const static int thread_count = std::thread::hardware_concurrency();
 
 
 // -----------------------------------------------------------
@@ -56,7 +56,6 @@ const static float rocket_radius = 10.f;
 // -----------------------------------------------------------
 void Game::init()
 {
-    const int thread_count = std::thread::hardware_concurrency();
     ThreadPool pool(thread_count);
     sh_blue = new spatial_hash(3000, 3000, 36, 500, 500);
     sh_red = new spatial_hash(3000, 3000, 36, 500, 500);
@@ -164,9 +163,10 @@ void Game::check_rocket_collision(Rocket& rocket, spatial_hash* sh)
     }
 }
 
-void Game::remove_rockets()
+void Game::remove_inactive_rockets()
 {
-	
+    //Remove exploded rockets with remove erase idiom
+    rockets.erase(std::remove_if(rockets.begin(), rockets.end(), [](const Rocket& rocket) { return !rocket.active; }), rockets.end());
 }
 
 // -----------------------------------------------------------
@@ -261,10 +261,9 @@ void Game::update(float deltaTime)
     	}
 
         check_rocket_collision(rocket, sh);
-
-        rockets.erase(std::remove_if(rockets.begin(), rockets.end(), [](const Rocket& rocket) { return !rocket.active; }), rockets.end());
     }
-
+    //remove rockets after they've all been updated
+    remove_inactive_rockets();
     
     //Update particle beams
     for (Particle_beam& particle_beam : particle_beams)

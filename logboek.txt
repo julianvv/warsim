@@ -8,4 +8,6 @@ De spatial hash zorgt er namelijk voor dat de tanks enkel de cel waar zij zich z
 De raketten update functie is door gebruik van de spatial hash ook enorm verbeterd. Eerst controleerde de raketten al vliegend elke frame of er een tank binnen hun colission radius zat,
 nu wordt dat alleen gedaan in de 9 cellen om zich heen.
 
-Dit zorgt voor een speedup van 2.4x t.o.v. de voor-meting. De exacte tijd is: 19,022 seconden.
+Dit zorgt voor een speedup van 3.1x t.o.v. de voor-meting. De gemiddelde simulatie-tijd is: 14.7 seconden.
+
+Na het toepassen van de spatial hash en het opnieuw debug profilen van de functies sprong er een overduidelijke winnaar uit.
