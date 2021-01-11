@@ -38,12 +38,6 @@ Tank::~Tank()
 
 void Tank::tick()
 {
-    vec2 direction = (target - position).normalized();
-
-    //Update using accumulated force
-    speed = direction + force;
-    position += speed * max_speed * 0.5f;
-
     //Update reload time
     if (--reload_time <= 0.0f)
     {
@@ -53,6 +47,7 @@ void Tank::tick()
     force = vec2(0.f, 0.f);
 
     if (++current_frame > 8) current_frame = 0;
+
 }
 
 //Start reloading timer

@@ -1,4 +1,5 @@
 #pragma once
+#include "spatial_hash.h"
 
 namespace Tmpl8
 {
@@ -19,8 +20,10 @@ class Game
     void tick(float deltaTime);
     void insertion_sort_tanks_health(const std::vector<Tank>& original, std::vector<const Tank*>& sorted_tanks, int begin, int end);
     void measure_performance();
-
+    
     Tank& find_closest_enemy(Tank& current_tank);
+    void check_rocket_collision(Rocket& rocket, spatial_hash* sh);
+    void remove_rockets();
 
     void mouse_up(int button)
     { /* implement if you want to detect mouse button presses */
@@ -43,6 +46,10 @@ class Game
     }
 
   private:
+    const static int thread_count;
+    ThreadPool pool;
+    spatial_hash* sh_blue;
+    spatial_hash* sh_red;
     Surface* screen;
 
     vector<Tank> tanks;

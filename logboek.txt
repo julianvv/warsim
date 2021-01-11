@@ -1,0 +1,11 @@
+Om de progressie bij te houden doen we een voor-meting die valt te vergelijken met de verbeteringen in het project. Die voor-meting was gemiddeld: 45501.
+
+Als eerst hebben we een spatial hash toegevoegd, hiermee kunnen de tanks efficiënter uit elkaar gedreven worden en controleert het niet elke tank van dezelfde kleur.
+Ook kunnen we deze spatial hash gebruiken om de raketten dichter om zichzelf heen te laten controleren voor colissions zodat hij niet constant alle vijandelijke tanks controleert.
+In eerste instantie had het updaten van de tanks een big O van O(n^2) (best case) Na het toepassen van de spatial hash word de big O in het begin O(n^2) (worst case)
+Echter, zodra de tanks uit elkaar gedreven zijn en dus niet meer allemaal in elkaar kunnen komen is de worst case O(54) De 54 is beredeneerd op basis van de tank size, namelijk 14 x 18 pixels en de cell grootte van 36 pixels.
+De spatial hash zorgt er namelijk voor dat de tanks enkel de cel waar zij zich zelf in bevinden en de 8 cellen daar omheen hoeven te controlleren. Dit maakt het update proces vele malen sneller.
+De raketten update functie is door gebruik van de spatial hash ook enorm verbeterd. Eerst controleerde de raketten al vliegend elke frame of er een tank binnen hun colission radius zat,
+nu wordt dat alleen gedaan in de 9 cellen om zich heen.
+
+Dit zorgt voor een speedup van 2.4x t.o.v. de voor-meting. De exacte tijd is: 19,022 seconden.

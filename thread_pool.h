@@ -5,8 +5,6 @@ namespace Tmpl8
 
 class ThreadPool; //Forward declare
 
-class Worker;
-
 class Worker
 {
   public:

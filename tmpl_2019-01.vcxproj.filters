@@ -13,6 +13,7 @@
     <ClCompile Include="particle_beam.cpp" />
     <ClCompile Include="explosion.cpp" />
     <ClCompile Include="tank.cpp" />
+    <ClCompile Include="spatial_hash.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="game.h" />
@@ -29,6 +30,7 @@
     <ClInclude Include="explosion.h" />
     <ClInclude Include="tank.h" />
     <ClInclude Include="thread_pool.h" />
+    <ClInclude Include="spatial_hash.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template code">
