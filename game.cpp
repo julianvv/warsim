@@ -1,6 +1,5 @@
 #include "precomp.h" // include (only) this in every .cpp file
 
-#include "spatial_hash.h"
 
 #define NUM_TANKS_BLUE 1279
 #define NUM_TANKS_RED 1279
@@ -48,7 +47,10 @@ const static vec2 rocket_size(25, 24);
 const static float tank_radius = 8.5f;
 const static float rocket_radius = 10.f;
 
-const static int thread_count = std::thread::hardware_concurrency();
+std::mutex rockets_lock;
+std::mutex spatial_lock;
+const static int thread_amount = thread::hardware_concurrency();
+ThreadPool thread_pool(thread_amount);
 
 
 // -----------------------------------------------------------
@@ -56,12 +58,12 @@ const static int thread_count = std::thread::hardware_concurrency();
 // -----------------------------------------------------------
 void Game::init()
 {
-    ThreadPool pool(thread_count);
     sh_blue = new spatial_hash(3000, 3000, 36, 500, 500);
     sh_red = new spatial_hash(3000, 3000, 36, 500, 500);
     frame_count_font = new Font("assets/digital_small.png", "ABCDEFGHIJKLMNOPQRSTUVWXYZ:?!=-0123456789.");
 
     tanks.reserve(NUM_TANKS_BLUE + NUM_TANKS_RED);
+    tank_pointers.reserve(NUM_TANKS_BLUE + NUM_TANKS_RED);
 
     uint rows = (uint)sqrt(NUM_TANKS_BLUE + NUM_TANKS_RED);
     uint max_rows = 12;
@@ -89,6 +91,11 @@ void Game::init()
         sh_red->add_tank(&tank);
     }
 
+	for (int i = 0; i < NUM_TANKS_BLUE + NUM_TANKS_RED; i++)
+	{
+        tank_pointers.push_back(&tanks.at(i));
+	}
+	
     particle_beams.push_back(Particle_beam(vec2(SCRWIDTH / 2, SCRHEIGHT / 2), vec2(100, 50), &particle_beam_sprite, PARTICLE_BEAM_HIT_VALUE));
     particle_beams.push_back(Particle_beam(vec2(80, 80), vec2(100, 50), &particle_beam_sprite, PARTICLE_BEAM_HIT_VALUE));
     particle_beams.push_back(Particle_beam(vec2(1200, 600), vec2(100, 50), &particle_beam_sprite, PARTICLE_BEAM_HIT_VALUE));
@@ -169,6 +176,210 @@ void Game::remove_inactive_rockets()
     rockets.erase(std::remove_if(rockets.begin(), rockets.end(), [](const Rocket& rocket) { return !rocket.active; }), rockets.end());
 }
 
+
+void Game::update_tanks()
+{
+    int max = tanks.size();
+    int thread_size = max / thread_amount;
+    int start = 0;
+    int end = start + thread_size;
+    int remaining = max % thread_amount;
+    int currently_remaining = remaining;
+
+    vector<future<void>> futures;
+
+    //Check positioning and nudge them away
+    for(int i = 0; i < thread_amount; i++)
+    {
+        if (currently_remaining > 0)
+        {
+            end++;
+            currently_remaining--;
+        }
+        futures.push_back(thread_pool.enqueue([&, start, end]
+            {
+		        for(int j = start; j < end; j++)
+		        {
+                    Tank& tank = tanks.at(j);
+                    if(tank.active)
+                    {
+                        spatial_hash* sh;
+                        spatial_cell* cell;
+          
+                    	if(tank.allignment == BLUE)
+                    	{
+                            sh = sh_blue;
+                    	}else
+                    	{
+                            sh = sh_red;
+                    	}
+          
+                    	for(int x = -1; x <= 1; x++)
+                    	{
+                    		for(int y = -1; y <=1; y++)
+                    		{
+                                cell = sh->position_to_cell(tank.position.x + (x * sh->get_cell_size()), tank.position.y + (y * sh->get_cell_size()));
+                    			for(int cell_nr = 0; cell_nr < cell->size(); cell_nr++)
+                    			{
+                                    Tank& o_tank = *cell->at(cell_nr);
+                                    if (&tank == &o_tank) continue;
+          
+                                    vec2 dir = tank.get_position() - o_tank.get_position();
+                                    float dir_squared_len = dir.sqr_length();
+                                    float col_squared_len = (tank.get_collision_radius() + o_tank.get_collision_radius());
+                                    col_squared_len *= col_squared_len;
+          
+                    				if(dir_squared_len < col_squared_len)
+                    				{
+                                        tank.push(dir.normalized(), 1.f);
+                    				}
+                    			}
+                    		}
+                    	}
+                        vec2 direction = (tank.target - tank.position).normalized();
+          
+                        tank.speed = direction + tank.force;
+
+                    	//Move tanks in Spatial hash
+                        {
+                            std::unique_lock<std::mutex> lock(spatial_lock);
+                            sh->move_tank(&tank, tank.position.x + tank.speed.x * tank.max_speed * 0.5f, tank.position.y + tank.speed.y * tank.max_speed * 0.5f);
+                        }
+
+                    	//Reload tank and update sprite
+                        tank.tick();
+
+                    	//Shoot at closest target if reloaded
+                        if (tank.rocket_reloaded())
+                        {
+                            Tank& target = find_closest_enemy(tank);
+
+                            {
+                                std::unique_lock<std::mutex> lock(rockets_lock);
+                                rockets.push_back(Rocket(tank.position, (target.get_position() - tank.position).normalized() * 3, rocket_radius, tank.allignment, ((tank.allignment == RED) ? &rocket_red : &rocket_blue)));
+                            }
+                        	
+                            tank.reload_rocket();
+                        }
+                    }
+		        }
+            }));
+
+        start = end;
+        end += thread_size;
+    }
+
+	for(future<void>& fut : futures)
+	{
+        fut.wait();
+	}
+
+    futures.clear();
+	
+}
+
+void Game::update_smokes()
+{
+    int max = smokes.size();//1276
+    int thread_size = max / thread_amount; //106
+    int start = 0; 
+    int end = start + thread_size; 
+    int remaining = max % thread_amount;//4
+    int currently_remaining = remaining;
+
+    vector<future<void>> futures;
+    for (int threadnr = 0; threadnr < thread_amount; threadnr++)
+    {
+	    if(currently_remaining > 0)
+	    {
+            end++;
+            currently_remaining--;
+	    }
+        futures.push_back(thread_pool.enqueue([&, start, end]
+            {
+                for(int smokenr = start; smokenr < end; smokenr++)
+                {
+                    smokes.at(smokenr).tick();
+                }
+            }));
+        start = end;
+        end += thread_size;
+    }
+
+    for (future<void>& fut : futures)
+    {
+        fut.wait();
+    }
+
+    futures.clear();
+    
+}
+
+void Game::update_explosions()
+{
+    int max = explosions.size();
+    int thread_size = max / thread_amount;
+    int start = 0;
+    int end = start + thread_size; //100
+    int remaining = max % thread_amount;
+    int currently_remaining = remaining;
+
+    vector<future<void>> futures;
+    for (int threadnr = 0; threadnr < thread_amount; threadnr++)
+    {
+        if (currently_remaining > 0)
+        {
+            end++;
+            currently_remaining--;
+        }
+        futures.push_back(thread_pool.enqueue([&, start, end]
+            {
+                for (int explosionnr = start; explosionnr < end; explosionnr++)
+                {
+                    explosions.at(explosionnr).tick();
+                }
+            }));
+        start = end;
+        end += thread_size;
+    }
+
+    for (future<void>& fut : futures)
+    {
+        fut.wait();
+    }
+
+    futures.clear();
+
+    start = 0;
+    end = start + thread_size;
+    currently_remaining = remaining;
+
+    // for (int threadnr = 0; threadnr < thread_amount; threadnr++)
+    // {
+    //     if (currently_remaining > 0)
+    //     {
+    //         end++;
+    //         currently_remaining--;
+    //     }
+    //     futures.push_back(thread_pool.enqueue([&, start, end]
+    //         {
+    //             explosions.erase(std::remove_if(explosions.begin() + start, explosions.begin() + end, [](const Explosion& explosion) { return explosion.done(); }), explosions.begin() + end);
+    //         }));
+    //     start = end;
+    //     end += thread_size;
+    // }
+    //
+    // for (future<void>& fut : futures)
+    // {
+    //     fut.wait();
+    // }
+    //
+    // futures.clear();
+
+    explosions.erase(std::remove_if(explosions.begin(), explosions.end(), [](const Explosion& explosion) { return explosion.done(); }), explosions.end());
+}
+
+
 // -----------------------------------------------------------
 // Update the game state:
 // Move all objects
@@ -178,75 +389,9 @@ void Game::remove_inactive_rockets()
 // -----------------------------------------------------------
 void Game::update(float deltaTime)
 {
-    //Update tanks
-    for (Tank& tank : tanks)
-    {
-        if (tank.active)
-        {
-            spatial_hash* sh;
-            spatial_cell* cell;
-            if (tank.allignment == BLUE)
-            {
-                sh = sh_blue;
-            }
-            else
-            {
-                sh = sh_red;
-            }
-
-        	for(int x = -1; x <= 1; x++)
-        	{
-        		for(int y = -1; y <= 1; y++)
-        		{
-                    cell = sh->position_to_cell(tank.position.x + (x * sh->get_cell_size()), tank.position.y + (y * sh->get_cell_size()));
-        			for(int i = 0; i < cell->size(); i++)
-        			{
-                        Tank& o_tank = *cell->at(i);
-                        if (&tank == &o_tank) continue;
-
-                        vec2 dir = tank.get_position() - o_tank.get_position();
-                        float dir_squared_len = dir.sqr_length();
-
-                        float col_squared_len = (tank.get_collision_radius() + o_tank.get_collision_radius());
-                        col_squared_len *= col_squared_len;
-
-                        if (dir_squared_len < col_squared_len)
-                        {
-                            tank.push(dir.normalized(), 1.f);
-                        }
-        			}
-        		}
-        	}
-
-            //Move tank in Spatial hash
-            vec2 direction = (tank.target - tank.position).normalized();
-
-            //Update using accumulated force
-            tank.speed = direction + tank.force;
-
-            //update Spatial hash position
-            sh->move_tank(&tank, tank.position.x + tank.speed.x * tank.max_speed * 0.5f, tank.position.y + tank.speed.y * tank.max_speed * 0.5f);
-          
-            //Reload tank
-            tank.tick();
-            //Shoot at closest target if reloaded
-            if (tank.rocket_reloaded())
-            {
-                Tank& target = find_closest_enemy(tank);
-
-                rockets.push_back(Rocket(tank.position, (target.get_position() - tank.position).normalized() * 3, rocket_radius, tank.allignment, ((tank.allignment == RED) ? &rocket_red : &rocket_blue)));
-
-                tank.reload_rocket();
-            }
-        }
-    }
-
-    //Update smoke plumes
-    for (Smoke& smoke : smokes)
-    {
-        smoke.tick();
-    }
-
+    update_tanks();
+    update_smokes();
+    
     //Update rockets
     for (Rocket& rocket : rockets)
     {
@@ -262,7 +407,7 @@ void Game::update(float deltaTime)
 
         check_rocket_collision(rocket, sh);
     }
-    //remove rockets after they've all been updated
+    //remove inactive rockets after they've all been updated
     remove_inactive_rockets();
     
     //Update particle beams
@@ -283,13 +428,7 @@ void Game::update(float deltaTime)
         }
     }
 
-    //Update explosion sprites and remove when done with remove erase idiom
-    for (Explosion& explosion : explosions)
-    {
-        explosion.tick();
-    }
-
-    explosions.erase(std::remove_if(explosions.begin(), explosions.end(), [](const Explosion& explosion) { return explosion.done(); }), explosions.end());
+    update_explosions();
 }
 
 void Game::draw()
@@ -335,10 +474,8 @@ void Game::draw()
     for (int t = 0; t < 2; t++)
     {
         const int NUM_TANKS = ((t < 1) ? NUM_TANKS_BLUE : NUM_TANKS_RED);
-
         const int begin = ((t < 1) ? 0 : NUM_TANKS_BLUE);
-        std::vector<const Tank*> sorted_tanks;
-        insertion_sort_tanks_health(tanks, sorted_tanks, begin, begin + NUM_TANKS);
+        std::vector<int> sorted_health = count_sort(tank_pointers, begin, NUM_TANKS);
 
         for (int i = 0; i < NUM_TANKS; i++)
         {
@@ -348,41 +485,45 @@ void Game::draw()
             int health_bar_end_y = (t < 1) ? HEALTH_BAR_HEIGHT : SCRHEIGHT - 1;
 
             screen->bar(health_bar_start_x, health_bar_start_y, health_bar_end_x, health_bar_end_y, REDMASK);
-            screen->bar(health_bar_start_x, health_bar_start_y + (int)((double)HEALTH_BAR_HEIGHT * (1 - ((double)sorted_tanks.at(i)->health / (double)TANK_MAX_HEALTH))), health_bar_end_x, health_bar_end_y, GREENMASK);
+            screen->bar(health_bar_start_x, health_bar_start_y + (int)((double)HEALTH_BAR_HEIGHT * (1 - (sorted_health.at(i) / (double)TANK_MAX_HEALTH))), health_bar_end_x, health_bar_end_y, GREENMASK);
         }
     }
 }
-
 // -----------------------------------------------------------
-// Sort tanks by health value using insertion sort
+// Sort tanks by health value using count sort
 // -----------------------------------------------------------
-void Tmpl8::Game::insertion_sort_tanks_health(const std::vector<Tank>& original, std::vector<const Tank*>& sorted_tanks, int begin, int end)
+std::vector<int> Game::count_sort(std::vector<Tank*>& tank_pointers, int begin, int num_tanks)
 {
-    const int NUM_TANKS = end - begin;
-    sorted_tanks.reserve(NUM_TANKS);
-    sorted_tanks.emplace_back(&original.at(begin));
-
-    for (int i = begin + 1; i < (begin + NUM_TANKS); i++)
+    std::vector<int> temp(num_tanks, 0);
+    int end = begin + num_tanks;
+    const int max = TANK_MAX_HEALTH + 1;
+    int count[max];
+    
+    for (int i = 0; i < max; ++i)
     {
-        const Tank& current_tank = original.at(i);
-
-        for (int s = (int)sorted_tanks.size() - 1; s >= 0; s--)
-        {
-            const Tank* current_checking_tank = sorted_tanks.at(s);
-
-            if ((current_checking_tank->compare_health(current_tank) <= 0))
-            {
-                sorted_tanks.insert(1 + sorted_tanks.begin() + s, &current_tank);
-                break;
-            }
-
-            if (s == 0)
-            {
-                sorted_tanks.insert(sorted_tanks.begin(), &current_tank);
-                break;
-            }
-        }
+	    count[i] = 0;
     }
+    
+    // Calculate count of elements
+    for (int i = 0; i < num_tanks; i++)
+    {
+	    count[tank_pointers.at(begin + i)->health]++;
+    }
+    
+    //Calculate cummulative count
+    for (int i = 1; i < max; i++)
+    {
+	    count[i] += count[i - 1];
+    }
+    
+    // Place the elements in sorted order
+    for (int i = num_tanks-1; i >= 0; i--)
+    {
+        temp.at(count[tank_pointers.at(begin + i)->health] - 1) = tank_pointers.at(begin + i)->health;
+        count[tank_pointers.at(begin + i)->health]--;
+    }
+    
+    return temp;
 }
 
 // -----------------------------------------------------------
