@@ -8,8 +8,5 @@ De spatial hash zorgt er namelijk voor dat de tanks enkel de cel waar zij zich z
 De raketten update functie is door gebruik van de spatial hash ook enorm verbeterd. Eerst controleerde de raketten al vliegend elke frame of er een tank binnen hun colission radius zat,
 nu wordt dat alleen gedaan in de 9 cellen om zich heen.
 
-Dit zorgt voor een speed-up van 3.1x t.o.v. de voor-meting. De gemiddelde simulatie-tijd is: 14.7 seconden.
+Dit zorgt voor een speedup van 3.1x t.o.v. de voor-meting. De gemiddelde simulatie-tijd is: 14.7 seconden.
 
-Vervolgens hebben wij het algoritme om een lijst met health van alle tanks per team te sorteren verbeterd. Dit hebben wij gedaan door een lijst met alleen integers daarin als health te sorteren met count sort.
-In het begin van de applicatie wordt een lijst met tankpointers gevuld en die wordt hierbij gebruikt. Dit zorgt voor een marginale winst van 1 tot 2 seconden max. Het insertion sort algortime was O(n^2) terwijl de count sort een O(n+k) heeft.
-Dit zorgte voor een speed-up van 3.5x t.o.v. de voor-meting en een gemiddelde tijdswinst van 1,5 seconden t.o.v. de vorige meting. De gemiddelde simulatie-tijd is nu namelijk: 13,2 seconden.
