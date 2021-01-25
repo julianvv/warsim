@@ -10,7 +10,7 @@ y_start(y)
 {
 	cell_amount = (height / cell_size) * (width / cell_size);
 
-	for(int i = 0; i < cell_amount; i++)
+	for(unsigned int i = 0; i < cell_amount; i++)
 	{
 		cells.push_back(spatial_cell());
 	}

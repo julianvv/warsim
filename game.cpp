@@ -136,7 +136,7 @@ Tank& Game::find_closest_enemy(Tank& current_tank)
 void Game::check_rocket_collision(Rocket& rocket, spatial_hash* sh)
 {
     spatial_cell* cell;
-    if ((rocket.position.x > -250 && rocket.position.x < 1530) && (rocket.position.y > -250 && rocket.position.y < 970))
+    if ((rocket.position.x > -100 && rocket.position.x < 1380) && (rocket.position.y > -100 && rocket.position.y < 820))
     {
         for (int x = -1; x <= 1; x++)
         {
@@ -222,7 +222,7 @@ void Game::update_tanks()
                     			for(int cell_nr = 0; cell_nr < cell->size(); cell_nr++)
                     			{
                                     Tank& o_tank = *cell->at(cell_nr);
-                                    if (&tank == &o_tank) continue;
+                                    if (&tank == &o_tank || !&o_tank.active) continue;
           
                                     vec2 dir = tank.get_position() - o_tank.get_position();
                                     float dir_squared_len = dir.sqr_length();
@@ -240,11 +240,7 @@ void Game::update_tanks()
           
                         tank.speed = direction + tank.force;
 
-                    	//Move tanks in Spatial hash
-                        {
-                            std::unique_lock<std::mutex> lock(spatial_lock);
-                            sh->move_tank(&tank, tank.position.x + tank.speed.x * tank.max_speed * 0.5f, tank.position.y + tank.speed.y * tank.max_speed * 0.5f);
-                        }
+                    	
 
                     	//Reload tank and update sprite
                         tank.tick();
@@ -274,8 +270,24 @@ void Game::update_tanks()
         fut.wait();
 	}
 
-    futures.clear();
-	
+	for(Tank& tank : tanks)
+	{
+		if(tank.active)
+		{
+            spatial_hash* sh;
+            if (tank.allignment == BLUE)
+            {
+                sh = sh_blue;
+            }
+            else
+            {
+                sh = sh_red;
+            }
+
+            sh->move_tank(&tank, tank.position.x + tank.speed.x * tank.max_speed * 0.5f, tank.position.y + tank.speed.y * tank.max_speed * 0.5f);
+
+		}
+	}
 }
 
 void Game::update_smokes()
@@ -309,10 +321,7 @@ void Game::update_smokes()
     for (future<void>& fut : futures)
     {
         fut.wait();
-    }
-
-    futures.clear();
-    
+    }    
 }
 
 void Game::update_explosions()
@@ -347,9 +356,6 @@ void Game::update_explosions()
     {
         fut.wait();
     }
-
-    futures.clear();
-
     start = 0;
     end = start + thread_size;
     currently_remaining = remaining;

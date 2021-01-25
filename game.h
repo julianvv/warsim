@@ -56,6 +56,7 @@ class Game
     spatial_hash* sh_red;
     Surface* screen;
 
+	
     vector<Tank> tanks;
     vector<Tank*> tank_pointers;
     vector<Rocket> rockets;
