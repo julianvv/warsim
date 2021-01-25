@@ -49,6 +49,8 @@ const static float rocket_radius = 10.f;
 
 std::mutex rockets_lock;
 std::mutex spatial_lock;
+std::mutex explosion_mutex;
+std::mutex smoke_mutex;
 const static int thread_amount = thread::hardware_concurrency();
 ThreadPool thread_pool(thread_amount);
 
@@ -290,6 +292,108 @@ void Game::update_tanks()
 	}
 }
 
+
+void Game::update_rockets()
+{
+    int max = rockets.size();//1276
+    int thread_size = max / thread_amount; //106
+    int start = 0;
+    int end = start + thread_size;
+    int remaining = max % thread_amount;//4
+    int currently_remaining = remaining;
+
+    vector<future<void>> futures;
+    vector<Tank*> dead_tanks;
+    mutex dead_tank_mutex;
+	for(int threadnr = 0; threadnr < thread_amount; threadnr++)
+	{
+		if(currently_remaining > 0)
+		{
+            end++;
+            currently_remaining--;
+		}
+        futures.push_back(thread_pool.enqueue([&, start, end]
+            {
+                for(int rocketnr = start; rocketnr < end; rocketnr++)
+                {
+                    Rocket& rocket = rockets.at(rocketnr);
+                    spatial_hash* sh;
+
+                	if(rocket.allignment == BLUE)
+                	{
+                        sh = sh_red;
+                	}else
+                	{
+                        sh = sh_blue;
+                	}
+                    rocket.tick();
+
+                    spatial_cell* cell;
+                    if ((rocket.position.x > -100 && rocket.position.x < 1380) && (rocket.position.y > -100 && rocket.position.y < 820))
+                    {
+                        for (int x = -1; x <= 1; x++)
+                        {
+                            for (int y = -1; y <= 1; y++)
+                            {
+                                cell = sh->position_to_cell(rocket.position.x + (x * sh->get_cell_size()), rocket.position.y + (y * sh->get_cell_size()));
+                                for (int i = 0; i < cell->size(); i++)
+                                {
+                                    Tank* tank = cell->at(i);
+                                    if (tank->active && rocket.intersects(tank->position, tank->collision_radius))
+                                    {
+                                        rocket.active = false;
+                                    	{
+                                            unique_lock<mutex> explosion_lock(explosion_mutex);
+                                            explosions.push_back(Explosion(&explosion, tank->position));
+                                    	}
+                                        
+
+                                        if (tank->hit(ROCKET_HIT_VALUE))
+                                        {
+                                            {
+                                                unique_lock<mutex> smoke_lock(smoke_mutex);
+                                                smokes.push_back(Smoke(smoke, tank->position - vec2(0, 48)));
+                                            }
+                                            tank->active = false;
+                                            {
+                                                unique_lock<mutex> dead_tank_lock(dead_tank_mutex);
+                                                dead_tanks.push_back(tank);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        rocket.active = false;
+                    }
+                	
+                }
+            }));
+        start = end;
+        end += thread_size;
+	}
+
+    for(future<void>& fut : futures)
+    {
+        fut.wait();
+    }
+	
+	for(Tank* tank : dead_tanks)
+	{
+		if(tank->allignment == BLUE)
+		{
+            sh_blue->remove_tank(tank);
+		}else
+		{
+            sh_red->remove_tank(tank);
+		}
+	}
+    remove_inactive_rockets();
+}
+
 void Game::update_smokes()
 {
     int max = smokes.size();//1276
@@ -396,26 +500,8 @@ void Game::update_explosions()
 void Game::update(float deltaTime)
 {
     update_tanks();
+    update_rockets();
     update_smokes();
-    
-    //Update rockets
-    for (Rocket& rocket : rockets)
-    {
-        rocket.tick();
-        spatial_hash* sh;
-    	if(rocket.allignment == BLUE)
-    	{
-            sh = sh_red;
-    	}else
-    	{
-            sh = sh_blue;
-    	}
-
-        check_rocket_collision(rocket, sh);
-    }
-    //remove inactive rockets after they've all been updated
-    remove_inactive_rockets();
-    
     //Update particle beams
     for (Particle_beam& particle_beam : particle_beams)
     {

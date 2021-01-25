@@ -17,7 +17,9 @@ class Game
     void init();
     void shutdown();
     void update_tanks();
+    void update_rockets();
     void update_smokes();
+	
     void update_explosions();
     void update(float deltaTime);
     void draw();
