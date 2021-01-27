@@ -17,29 +17,34 @@ Dit zorgte voor een speed-up van 3.5x t.o.v. de voor-meting en een gemiddelde ti
 Na het toepassen van deze 2 algoritmische verbeteringen hebben wij besloten dingen te gaan multithreaden. Volgens de debug profile van visual studio was nog steeds de Game::update een van de grootste bottlenecks. Wij hebben gebruik gemaakt van de meegeleverde ThreadPool.
 Door de threadpool te gebruiken kunnen wij threads hergebruiken dat zorgt voor minder overhead. Het eerste deel van de update methode is het updaten van de tanks.
 
-//update_tanks vooraf
+//update_tanks
 	T1 = n^2
 	T∞ = n
+n = tanks
 Worst case van de tank update is nog steeds n^2 als alle tanks in dezelfde cell zouden zitten. Door de nudging is dit echter niet mogelijk want de tanks worden uit elkaar gedrukt.
 
 //update Rockets
 	T1 = n * m
-	T∞ = n
-Je checkt voor elke rocket 9 cellen om hem heen en controleert of zij binnen de collision radius komen.
+	T∞ = m
+n = rockets, m = tanks
+Checkt voor elke rocket 9 cellen om zich heen en controleert of er tanks binnen de collision radius komen.
 
 //update Smokes
 	T1 = n
 	T∞ = 1
+n = smokes
 Eerst werd er een for-loop met alle smokes gedaan. Bij T∞ is er voor elke smoke een thread die het kan uitvoeren.
 
 //update Explosion
 	T1 = n
 	T∞ = 1
+n = explosions
 Eerst werd er een for-loop met alle explosions gedaan. Bij T∞ is er voor elke explosion een thread die het kan uitvoeren.
 
-//update Particle_beam vooraf
+//update Particle_beam
 	T1 = n * m
 	T∞ = m
+n = particle beams, m = tanks
 Ook hier werd een for loop gedaan met alle particle_beams en vervolgens werden alle tanks gecheckt. Door het toepassen van de spatial_hash wordt het aantal tanks flink gereduceerd de particle beam hoeft nu maar m tanks in 9 gridcellen omzichheen te controleren.
 
 
