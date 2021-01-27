@@ -19,7 +19,7 @@ class Game
     void update_tanks();
     void update_rockets();
     void update_smokes();
-	
+    void update_particle_beams();
     void update_explosions();
     void update(float deltaTime);
     void draw();

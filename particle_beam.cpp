@@ -16,7 +16,7 @@ Particle_beam::Particle_beam(vec2 min, vec2 max, Sprite* particle_beam_sprite, i
     rectangle = Rectangle2D(min_position, max_position);
 }
 
-void Particle_beam::tick(vector<Tank>& tanks)
+void Particle_beam::tick()
 {
 
     if (++sprite_frame == 30)

@@ -295,11 +295,11 @@ void Game::update_tanks()
 
 void Game::update_rockets()
 {
-    int max = rockets.size();//1276
-    int thread_size = max / thread_amount; //106
+    int max = rockets.size();
+    int thread_size = max / thread_amount;
     int start = 0;
     int end = start + thread_size;
-    int remaining = max % thread_amount;//4
+    int remaining = max % thread_amount;
     int currently_remaining = remaining;
 
     vector<future<void>> futures;
@@ -460,35 +460,52 @@ void Game::update_explosions()
     {
         fut.wait();
     }
-    start = 0;
-    end = start + thread_size;
-    currently_remaining = remaining;
-
-    // for (int threadnr = 0; threadnr < thread_amount; threadnr++)
-    // {
-    //     if (currently_remaining > 0)
-    //     {
-    //         end++;
-    //         currently_remaining--;
-    //     }
-    //     futures.push_back(thread_pool.enqueue([&, start, end]
-    //         {
-    //             explosions.erase(std::remove_if(explosions.begin() + start, explosions.begin() + end, [](const Explosion& explosion) { return explosion.done(); }), explosions.begin() + end);
-    //         }));
-    //     start = end;
-    //     end += thread_size;
-    // }
-    //
-    // for (future<void>& fut : futures)
-    // {
-    //     fut.wait();
-    // }
-    //
-    // futures.clear();
-
+    
     explosions.erase(std::remove_if(explosions.begin(), explosions.end(), [](const Explosion& explosion) { return explosion.done(); }), explosions.end());
 }
 
+void Game::update_particle_beams()
+{
+    //Update particle beams
+    for (Particle_beam& particle_beam : particle_beams)
+    {
+        spatial_cell* cell1;
+        spatial_cell* cell2;
+        particle_beam.tick();
+
+        for (int x = -1; x <= 1; x++)
+        {
+            for (int y = -1; y <= 1; y++)
+            {
+                cell1 = sh_blue->position_to_cell(particle_beam.max_position.x + (x * sh_blue->get_cell_size()), particle_beam.max_position.y + (y * sh_blue->get_cell_size()));
+                cell2 = sh_red->position_to_cell(particle_beam.max_position.x + (x * sh_blue->get_cell_size()), particle_beam.max_position.y + (y * sh_blue->get_cell_size()));
+
+                for (int i = 0; i < cell1->size(); i++)
+                {
+                    Tank* tank = cell1->at(i);
+                    if (tank->active && particle_beam.rectangle.intersects_circle(tank->get_position(), tank->get_collision_radius()))
+                    {
+                        if (tank->hit(particle_beam.damage))
+                        {
+                            smokes.push_back(Smoke(smoke, tank->position - vec2(0, 48)));
+                        }
+                    }
+                }
+                for (int j = 0; j < cell2->size(); j++)
+                {
+                    Tank* tank = cell2->at(j);
+                    if (tank->active && particle_beam.rectangle.intersects_circle(tank->get_position(), tank->get_collision_radius()))
+                    {
+                        if (tank->hit(particle_beam.damage))
+                        {
+                            smokes.push_back(Smoke(smoke, tank->position - vec2(0, 48)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 // -----------------------------------------------------------
 // Update the game state:
@@ -502,24 +519,7 @@ void Game::update(float deltaTime)
     update_tanks();
     update_rockets();
     update_smokes();
-    //Update particle beams
-    for (Particle_beam& particle_beam : particle_beams)
-    {
-        particle_beam.tick(tanks);
-
-        //Damage all tanks within the damage window of the beam (the window is an axis-aligned bounding box)
-        for (Tank& tank : tanks)
-        {
-            if (tank.active && particle_beam.rectangle.intersects_circle(tank.get_position(), tank.get_collision_radius()))
-            {
-                if (tank.hit(particle_beam.damage))
-                {
-                    smokes.push_back(Smoke(smoke, tank.position - vec2(0, 48)));
-                }
-            }
-        }
-    }
-
+    update_particle_beams();
     update_explosions();
 }
 
